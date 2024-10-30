@@ -148,7 +148,7 @@ async function doAnalyzeWebsiteFlow(input: any): Promise<any> {
   })).output();
 
   // add website to database
-  addWebsite(firestore, input.domain, result.decision, result.reasons);
+  addWebsite(firestore, input.domain, result);
 
   // return decision & reasons
   return result;

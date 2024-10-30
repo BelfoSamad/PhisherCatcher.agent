@@ -12,6 +12,7 @@ import {config} from "dotenv";
 import {defineFlow} from "@genkit-ai/flow";
 import {z} from "zod";
 import {checkAddressFormat, checkWHOIS, checkTLD, checkSSL} from "./tools/utilities";
+import {addWebsite} from "./tools/firestore";
 
 // Keys
 const googleAIapiKey = defineSecret("GOOGLE_GENAI_API_KEY");
@@ -62,17 +63,29 @@ async function checkDomainWording(url: string, domain: string): Promise<string[]
 async function checkRecords(domain: string): Promise<string[]> {
   let suspicions: string[] = [];
 
-  const whoisInfo = await checkWHOIS(process.env.WHOIS_API_KEY!, domain);
-  suspicions.push(`Domain Name Age: ${whoisInfo.domainAge}`);
-  
-  const tldInfo = checkTLD(domain);
-  if (tldInfo.tldSuspicionSeverity != null) suspicions.push(`Suspecious TLD of Severity: ${tldInfo.tldSuspicionSeverity}`);
+  try {
+    const whoisInfo = await checkWHOIS(process.env.WHOIS_API_KEY!, domain);
+    suspicions.push(`Domain Name Age: ${whoisInfo.domainAge}`);
+  } catch (err) {
+    console.log("An error caught, ignore!. Error: " + err);
+  }
 
-  const sslInfo : any = await checkSSL(domain);
-  if (!sslInfo.isCertificateValid) suspicions.push("SSL Certificate: Invalid");
-  if (sslInfo.isCertificateValid) {
-    suspicions.push(`SSL Certificate Remaining Days: ${sslInfo.certificationValidDays}`);
-    suspicions.push(`SSL Certificate Issuer is Trusted: ${sslInfo.isIssuerTrusted ? "Yes" : "No"}`);
+  try {
+    const tldInfo = checkTLD(domain);
+    if (tldInfo.tldSuspicionSeverity != null) suspicions.push(`Suspecious TLD of Severity: ${tldInfo.tldSuspicionSeverity}`);
+  } catch (err) {
+    console.log("An error caught, ignore!. Error: " + err);
+  }
+
+  try {
+    const sslInfo: any = await checkSSL(domain);
+    if (!sslInfo.isCertificateValid) suspicions.push("SSL Certificate: Invalid");
+    if (sslInfo.isCertificateValid) {
+      suspicions.push(`SSL Certificate Remaining Days: ${sslInfo.certificationValidDays}`);
+      suspicions.push(`SSL Certificate Issuer is Trusted: ${sslInfo.isIssuerTrusted ? "Yes" : "No"}`);
+    }
+  } catch (err) {
+    console.log("An error caught, ignore!. Error: " + err);
   }
 
   return suspicions;
@@ -109,7 +122,6 @@ export const analyzeWebsiteFlow = debug ? defineFlow(
     }),
     authPolicy: firebaseAuth((user) => {
       if (!user) throw Error("ERROR::AUTH");
-      else if (!user.email_verified) throw Error("ERROR::VERIFICATION");
     }),
   },
   doAnalyzeWebsiteFlow,
@@ -135,7 +147,8 @@ async function doAnalyzeWebsiteFlow(input: any): Promise<any> {
     }
   })).output();
 
-  // TODO: return addWebsite(firestore, input.domain, result.decision, result.reasons);
+  // add website to database
+  addWebsite(firestore, input.domain, result.decision, result.reasons);
 
   // return decision & reasons
   return result;
